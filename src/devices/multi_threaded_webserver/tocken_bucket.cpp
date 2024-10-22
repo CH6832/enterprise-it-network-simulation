@@ -6,29 +6,35 @@
 #include <unordered_map>
 #include <algorithm>
 
-// TokenBucket constructor: Initialize rate, burst size, tokens, and last refill time
+// TokenBucket constructor: Initializes the rate of token generation, burst size, the current number of tokens, and the last refill time.
+// @param rate The rate at which tokens are generated (tokens per second).
+// @param burst_size The maximum number of tokens that can be stored in the bucket.
 TokenBucket::TokenBucket(int rate, int burst_size)
     : rate(rate), burst_size(burst_size), tokens(burst_size), last_refill_time(std::chrono::steady_clock::now()) {}
 
-// Check if a request can proceed
+// Check if a request can proceed based on token availability.
+// @return true if the request is allowed (tokens available), false if the request is denied (no tokens available).
 bool TokenBucket::allow() {
-    std::lock_guard<std::mutex> lock(mtx); // Lock for thread safety
+    std::lock_guard<std::mutex> lock(mtx); // Lock the mutex for thread safety to prevent race conditions
 
-    // Get the current time and calculate the time passed since last refill
+    // Get the current time
     auto now = std::chrono::steady_clock::now();
+    // Calculate the duration since the last token refill
     std::chrono::duration<double> time_passed = now - last_refill_time;
 
-    // Refill tokens based on the time passed and rate
+    // Calculate the number of new tokens to be added based on the elapsed time and the rate
     int new_tokens = static_cast<int>(time_passed.count() * rate);
-    tokens = std::min(tokens + new_tokens, burst_size);  // Ensure tokens don't exceed burst size
+    // Update the token count without exceeding the burst size
+    tokens = std::min(tokens + new_tokens, burst_size);
+    // Update the last refill time to the current time
     last_refill_time = now;
 
-    // Check if there are tokens available
+    // Check if there are tokens available to allow the request
     if (tokens > 0) {
-        tokens--;  // Decrease token count for this request
+        tokens--;  // Decrease the token count for the current request
         return true;  // Allow the request
     }
 
-    // No tokens available, deny the request (throttle)
+    // If no tokens are available, deny the request (throttle)
     return false;
 }
