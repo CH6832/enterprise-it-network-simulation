@@ -3,9 +3,20 @@
 echo "Initializing Network Simulation..."
 
 # Change directory to where the compiled executable is located
-cd ./bin
+cd ./bin || {
+    echo "Error: Directory './bin' not found!"
+    exit 1
+}
 
-# Start the simulation executable (assuming it is named 'netlab_simulation')
-./netlab_simulation &
+# Check if the simulation executable exists before attempting to run it
+if [[ -f "netlab_simulation" ]]; then
+    echo "Starting Network Simulation..."
+    ./netlab_simulation &
+    echo "Network Simulation started successfully!"
+else
+    echo "Error: 'netlab_simulation' executable not found in the './bin' directory!"
+    exit 1
+fi
 
-echo "Network Simulation started successfully!"
+# Optionally, you can wait for background processes to finish
+# wait
