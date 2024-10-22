@@ -1,20 +1,57 @@
 {
   "network": {
-      "subnets": [
+    "subnets": [
+      {
+        "subnet": "192.168.1.0/24",
+        "devices": [
           {
-              "subnet": "192.168.1.0/24",
-              "devices": [
-                  "computer",
-                  "printer"
-              ]
+            "device_name": "Workstation_1",
+            "ip_address": "192.168.1.10",
+            "device_type": "computer",
+            "operating_system": "Windows 10",
+            "mac_address": "00:1A:2B:3C:4D:5E",
+            "description": "User workstation for marketing"
           },
           {
-              "subnet": "192.168.2.0/24",
-              "devices": [
-                  "router",
-                  "firewall"
-              ]
+            "device_name": "Workstation_2",
+            "ip_address": "192.168.1.11",
+            "device_type": "computer",
+            "operating_system": "Ubuntu 20.04",
+            "mac_address": "00:1A:2B:3C:4D:5F",
+            "description": "Development workstation for software engineering"
+          },
+          {
+            "device_name": "Office_Printer",
+            "ip_address": "192.168.1.20",
+            "device_type": "printer",
+            "model": "HP LaserJet Pro",
+            "mac_address": "00:1A:2B:3C:4D:60",
+            "description": "Shared network printer for office use"
           }
-      ]
+        ]
+      },
+      {
+        "subnet": "192.168.2.0/24",
+        "devices": [
+          {
+            "device_name": "Main_Router",
+            "ip_address": "192.168.2.1",
+            "device_type": "router",
+            "vendor": "Cisco",
+            "mac_address": "00:1A:2B:3C:4D:61",
+            "description": "Main router connecting to the internet"
+          },
+          {
+            "device_name": "Firewall_1",
+            "ip_address": "192.168.2.2",
+            "device_type": "firewall",
+            "vendor": "Fortinet",
+            "mac_address": "00:1A:2B:3C:4D:62",
+            "description": "Network security firewall"
+          }
+        ]
+      }
+    ],
+    "description": "Enterprise network configuration with devices and subnets, including detailed device information."
   }
 }
