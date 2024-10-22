@@ -4,185 +4,231 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <unistd.h>   // For Unix system calls and functions
-#endif
-#include <sys/types.h>
-#ifdef _WIN32
-#include <winsock2.h>  // Windows Sockets API
-#include <ws2tcpip.h>  // For additional TCP/IP functions
-#pragma comment(lib, "Ws2_32.lib")  // Link against the Winsock library
-#else
-#include <sys/types.h>  // For types used by socket functions
-#include <sys/socket.h> // For socket-related functions
-#include <netinet/in.h> // For Internet address family
-#include <arpa/inet.h>  // For IP address conversion
-#include <unistd.h>     // For close() function
-#include <sys/epoll.h>
-#endif
-#include <fcntl.h>
 #include <mutex>
 #include <chrono>
-#include <mutex>
 #include <thread>
 #include <unordered_map>
 #include "token_bucket.hpp"
-#include <iostream>
-#include "curl/curl.h"  // Libcurl for HTTP requests
-#include <openssl/ssl.h>       // For SSL-related functions and types
-#include <openssl/err.h>       // For error handling functions
-#include <openssl/opensslv.h>  // OpenSSL version information
+#include <curl/curl.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#include <openssl/opensslv.h>
 
-std::mutex log_mutex;
-
-Server::Server(int port) : port(port), server_fd(-1)
 #ifdef _WIN32
-// On Windows, epoll_fd is not used, so no initialization needed.
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "Ws2_32.lib")
 #else
-, epoll_fd(-1) // Initialize epoll_fd only on Linux/Unix
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <sys/epoll.h>
 #endif
-{}
 
+std::mutex log_mutex; // Mutex for thread-safe logging
+
+/**
+ * @class Server
+ * @brief A simple HTTP server that handles client connections.
+ *
+ * This class provides functionality for creating a TCP server that can handle
+ * incoming HTTP requests, serving static files, and managing concurrent connections.
+ */
+class Server {
+public:
+    Server(int port);
+    ~Server();
+    void start();
+
+private:
+    int create_server_socket(int port);
+    void cleanup();
+    void log_message(const std::string& message);
+    std::string handle_request(const std::string& request);
+    void handle_client(int client_socket);
+    void handle_connections();
+    std::string get_mime_type(const std::string& path);
+
+    int port;             ///< The port on which the server will listen for incoming connections.
+    int server_fd;        ///< The file descriptor for the server socket.
+#ifdef _WIN32
+    // Windows-specific members
+#else
+    int epoll_fd;        ///< The file descriptor for the epoll instance (Linux only).
+#endif
+};
+
+/**
+ * @brief Constructs a Server object.
+ * @param port The port number on which the server will listen.
+ */
+Server::Server(int port) 
+    : port(port), server_fd(-1)
+#ifdef _WIN32
+{}
+#else
+, epoll_fd(-1)
+{}
+#endif
+
+/**
+ * @brief Destructor that cleans up resources.
+ *
+ * This destructor ensures that all sockets and associated resources
+ * are properly closed and released to prevent memory leaks.
+ */
 Server::~Server() {
+    cleanup();
+}
+
+/**
+ * @brief Cleans up the server's resources.
+ *
+ * This method closes the server socket and any other open file descriptors.
+ */
+void Server::cleanup() {
 #ifdef _WIN32
     if (server_fd != INVALID_SOCKET) closesocket(server_fd);
-    // epoll_fd is not applicable on Windows, so don't use it
-    WSACleanup(); // Clean up Winsock
+    WSACleanup(); // Cleanup Windows sockets
 #else
     if (server_fd >= 0) close(server_fd);
-    if (epoll_fd >= 0) close(epoll_fd); // Close epoll_fd only on Linux/Unix
+    if (epoll_fd >= 0) close(epoll_fd);
 #endif
 }
 
+/**
+ * @brief Creates a server socket and binds it to the specified port.
+ * @param port The port number to bind the server socket to.
+ * @return The file descriptor for the server socket, or -1 on failure.
+ */
 int Server::create_server_socket(int port) {
-    // Initialize Winsock
+#ifdef _WIN32
     WSADATA wsaData;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (result != 0) {
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         log_message("WSAStartup failed");
         return -1;
     }
+#endif
 
+    // Create a TCP socket
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == INVALID_SOCKET) {
         log_message("Socket creation failed");
-        WSACleanup();
+        cleanup();
         return -1;
     }
 
     // Set the socket to non-blocking mode
     u_long mode = 1; // 1 to enable non-blocking mode
-    result = ioctlsocket(fd, FIONBIO, &mode);
-    if (result != NO_ERROR) {
+#ifdef _WIN32
+    if (ioctlsocket(fd, FIONBIO, &mode) != NO_ERROR) {
+#else
+    if (fcntl(fd, F_SETFL, O_NONBLOCK) == -1) {
+#endif
         log_message("Failed to set non-blocking mode");
         closesocket(fd);
-        WSACleanup();
+        cleanup();
         return -1;
     }
 
-    sockaddr_in address;
+    sockaddr_in address = {0}; // Initialize address structure
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
+    address.sin_addr.s_addr = INADDR_ANY; // Listen on all interfaces
+    address.sin_port = htons(port); // Convert port to network byte order
 
+    // Bind the socket to the specified port
     if (bind(fd, (struct sockaddr*)&address, sizeof(address)) == SOCKET_ERROR) {
         log_message("Bind failed");
         closesocket(fd);
-        WSACleanup();
+        cleanup();
         return -1;
     }
 
-    if (listen(fd, 10) == SOCKET_ERROR) {
+    // Listen for incoming connections
+    if (listen(fd, SOMAXCONN) == SOCKET_ERROR) {
         log_message("Listen failed");
         closesocket(fd);
-        WSACleanup();
+        cleanup();
         return -1;
     }
 
-    return fd;
+    return fd; // Return the valid server socket
 }
 
+/**
+ * @brief Logs a message to the console in a thread-safe manner.
+ * @param message The message to log.
+ */
 void Server::log_message(const std::string& message) {
-    std::lock_guard<std::mutex> guard(log_mutex);
-    std::cout << message << std::endl;
+    std::lock_guard<std::mutex> guard(log_mutex); // Lock the mutex for thread safety
+    std::cout << message << std::endl; // Print the message to the console
 }
 
+/**
+ * @brief Handles an incoming HTTP request and returns the response.
+ * @param request The HTTP request string received from the client.
+ * @return The HTTP response string to be sent back to the client.
+ */
 std::string Server::handle_request(const std::string& request) {
-    std::istringstream request_stream(request);
+    std::istringstream request_stream(request); // Stream for parsing the request
     std::string method, path, version;
-    request_stream >> method >> path >> version;
+    request_stream >> method >> path >> version; // Extract the method, path, and version
 
+    // Handle only GET requests for now
     if (method == "GET") {
-        if (path == "/") path = "/index.html"; // Default file
-        path = "." + path; // Relative path to the current directory
+        if (path == "/") path = "/index.html"; // Default file for root
+        path = "." + path; // Prepend the current directory to the path
 
+        // Open the requested file
         std::ifstream file(path, std::ios::binary);
         if (file) {
             std::ostringstream contents;
-            contents << file.rdbuf();
-            std::string body = contents.str();
+            contents << file.rdbuf(); // Read the file's content
+            std::string body = contents.str(); // Store the content in a string
+            // Create a response string with the appropriate headers
             std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
-            return response;
+            return response; // Return the successful response
+        } else {
+            return "HTTP/1.1 404 Not Found\r\n\r\n"; // File not found response
         }
-        else {
-            return "HTTP/1.1 404 Not Found\r\n\r\n";
-        }
-    }
-    else {
-        return "HTTP/1.1 400 Bad Request\r\n\r\n";
+    } else {
+        return "HTTP/1.1 400 Bad Request\r\n\r\n"; // Bad request response for unsupported methods
     }
 }
 
-// Platform-independent log function
-void log_message(const std::string& message) {
-    std::cout << message << std::endl;
-}
-
-// Platform-independent request handler function
-std::string handle_request(const std::string& request) {
-    // Process the request and return a response
-    return "Processed: " + request;
-}
-
+/**
+ * @brief Handles client connections, reading requests and sending responses.
+ * @param client_socket The socket descriptor for the connected client.
+ */
 void Server::handle_client(int client_socket) {
-    char buffer[1024] = { 0 };
-
-#ifdef _WIN32
-    // Use int for bytes_read on Windows
-    int bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
-#else
-    // Use ssize_t for bytes_read on Unix/Linux
-    ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
-#endif
+    char buffer[1024] = { 0 }; // Buffer for reading data from the client
+    ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1); // Read data
 
     if (bytes_read > 0) {
         buffer[bytes_read] = '\0'; // Null-terminate the string
-        std::string request(buffer);
-        log_message("Received request:\n" + request);
+        std::string request(buffer); // Create a string from the buffer
+        log_message("Received request:\n" + request); // Log the received request
 
+        // Process the request and get the response
         std::string response = handle_request(request);
-
-#ifdef _WIN32
-        send(client_socket, response.c_str(), response.size(), 0);
-#else
-        write(client_socket, response.c_str(), response.size());
-#endif
-    }
-    else {
-        log_message("Failed to read from client socket");
+        send(client_socket, response.c_str(), response.size(), 0); // Send the response
+    } else {
+        log_message("Failed to read from client socket"); // Log read failure
     }
 
-#ifdef _WIN32
-    closesocket(client_socket);
-#else
-    close(client_socket);
-#endif
+    closesocket(client_socket); // Close the client socket
 }
 
+/**
+ * @brief Main loop for accepting and handling incoming connections.
+ */
 void Server::handle_connections() {
-    // Create an IOCP
+    // Windows-specific handling for IOCP
+#ifdef _WIN32
     HANDLE iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
     if (iocp == NULL) {
         log_message("Failed to create IOCP");
@@ -195,173 +241,102 @@ void Server::handle_connections() {
         return;
     }
 
-    // Thread pool to handle IO completions
-    ThreadPool thread_pool(4);
+    ThreadPool thread_pool(4); // Create a thread pool for handling requests
 
     while (true) {
         DWORD bytesTransferred;
         ULONG_PTR completionKey;
         OVERLAPPED* overlapped = nullptr;
 
+        // Wait for a completed IO operation
         BOOL result = GetQueuedCompletionStatus(iocp, &bytesTransferred, &completionKey, &overlapped, INFINITE);
         if (!result) {
             log_message("Failed in GetQueuedCompletionStatus");
             continue;
         }
 
-        SOCKET client_socket = (SOCKET)completionKey;
+        SOCKET client_socket = (SOCKET)completionKey; // Get the client socket
 
-        // Check if it's a new connection
         if (client_socket == server_fd) {
             // Accept new connections
             while (true) {
                 SOCKET client_socket = accept(server_fd, nullptr, nullptr);
                 if (client_socket == INVALID_SOCKET) {
-                    if (WSAGetLastError() == WSAEWOULDBLOCK) break;
+                    if (WSAGetLastError() == WSAEWOULDBLOCK) break; // No more connections
                     log_message("Accept failed");
                     continue;
                 }
 
-                // Associate the new client socket with IOCP
-                if (CreateIoCompletionPort((HANDLE)client_socket, iocp, (ULONG_PTR)client_socket, 0) == NULL) {
-                    log_message("Failed to associate client socket with IOCP");
-                    closesocket(client_socket);
-                }
+                // Associate the new client socket with the IOCP
+                CreateIoCompletionPort((HANDLE)client_socket, iocp, (ULONG_PTR)client_socket, 0);
+                thread_pool.enqueue([this, client_socket] { handle_client(client_socket); });
             }
         }
-        else {
-            // Handle client request
-            thread_pool.enqueue([this, client_socket]() {
-                handle_client(client_socket);
-                closesocket(client_socket); // Close socket after handling
-                });
-        }
     }
-}
-
-std::string get_mime_type(const std::string& path) {
-    if (path.ends_with(".html")) return "text/html";
-    else if (path.ends_with(".css")) return "text/css";
-    else if (path.ends_with(".js")) return "application/javascript";
-    else if (path.ends_with(".jpg") || path.ends_with(".jpeg")) return "image/jpeg";
-    else if (path.ends_with(".png")) return "image/png";
-    else return "application/octet-stream"; // Default binary type
-}
-
-std::string Server::handle_static_file(const std::string& path) {
-    std::ifstream file("." + path, std::ios::binary);
-    if (file) {
-        std::ostringstream contents;
-        contents << file.rdbuf();
-        std::string body = contents.str();
-        std::string mime_type = get_mime_type(path);
-        return "HTTP/1.1 200 OK\r\nContent-Type: " + mime_type + "\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
-    }
-    return "HTTP/1.1 404 Not Found\r\n\r\n";
-}
-
-SSL_CTX* create_ssl_context() {
-    SSL_CTX* ctx = SSL_CTX_new(TLS_server_method());
-    if (!ctx) {
-        log_message("Unable to create SSL context");
-        return nullptr;
-    }
-    SSL_CTX_set_ecdh_auto(ctx, 1);
-    // Load certificate and private key
-    if (SSL_CTX_use_certificate_file(ctx, "cert.pem", SSL_FILETYPE_PEM) <= 0 ||
-        SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM) <= 0) {
-        log_message("Failed to load cert or key");
-        return nullptr;
-    }
-    return ctx;
-}
-
-// Usage in your server
-std::unordered_map<std::string, TokenBucket> rate_limiters;
-
-// Initialize token bucket per client IP or API key
-void initialize_rate_limiters() {
-    rate_limiters["client_ip_1"] = TokenBucket(5, 10); // 5 requests per second, burst of 10
-    rate_limiters["client_ip_2"] = TokenBucket(2, 5);  // 2 requests per second, burst of 5
-}
-
-// Check if the client request should be allowed
-bool check_rate_limit(const std::string& client_ip) {
-    if (rate_limiters[client_ip].allow()) {
-        return true;  // Allow request
-    }
-    return false;  // Deny or throttle request
-}
-
-void Server::handle_client(int client_socket) {
-    std::string client_ip = get_client_ip(client_socket);  // Function to retrieve client's IP
-
-    if (!check_rate_limit(client_ip)) {
-        std::string response = "HTTP/1.1 429 Too Many Requests\r\n\r\n";
-        send(client_socket, response.c_str(), response.size(), 0);
-        close_socket(client_socket);
+#else
+    // Linux-specific handling for epoll
+    epoll_fd = epoll_create1(0);
+    if (epoll_fd < 0) {
+        log_message("Failed to create epoll instance");
         return;
     }
 
-    // Process the request as usual
-    char buffer[1024] = { 0 };
-    ssize_t bytes_read = read(client_socket, buffer, sizeof(buffer) - 1);
-    // ...
-}
+    epoll_event event = {};
+    event.events = EPOLLIN; // Listen for incoming connections
+    event.data.fd = server_fd; // Associate the server socket with the epoll instance
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event); // Add server socket to epoll
 
-void register_service_with_consul(const std::string& service_name, int port) {
-    CURL* curl = curl_easy_init();
-    if (curl) {
-        std::string consul_url = "http://localhost:8500/v1/agent/service/register";
+    ThreadPool thread_pool(4); // Create a thread pool for handling requests
 
-        std::string service_json = R"({
-            "ID": ")" + service_name + R"(",
-            "Name": ")" + service_name + R"(",
-            "Address": "127.0.0.1",
-            "Port": )" + std::to_string(port) + R"(,
-            "Tags": ["primary"]
-        })";
+    while (true) {
+        epoll_event events[10]; // Buffer for events
+        int num_events = epoll_wait(epoll_fd, events, 10, -1); // Wait for events
 
-        curl_easy_setopt(curl, CURLOPT_URL, consul_url.c_str());
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, service_json.c_str());
-        curl_easy_setopt(curl, CURLOPT_POST, 1L);
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, curl_slist_append(NULL, "Content-Type: application/json"));
+        for (int i = 0; i < num_events; i++) {
+            if (events[i].data.fd == server_fd) {
+                // Accept new connections
+                while (true) {
+                    int client_socket = accept(server_fd, nullptr, nullptr);
+                    if (client_socket < 0) {
+                        if (errno == EAGAIN || errno == EWOULDBLOCK) break; // No more connections
+                        log_message("Accept failed");
+                        continue;
+                    }
 
-        CURLcode res = curl_easy_perform(curl);
-        if (res != CURLE_OK) {
-            std::cerr << "Failed to register service with Consul: " << curl_easy_strerror(res) << std::endl;
+                    // Set the client socket to non-blocking
+                    fcntl(client_socket, F_SETFL, O_NONBLOCK);
+                    thread_pool.enqueue([this, client_socket] { handle_client(client_socket); });
+                }
+            }
         }
-        else {
-            std::cout << "Service registered with Consul successfully." << std::endl;
-        }
-        curl_easy_cleanup(curl);
     }
+#endif
 }
 
-std::string discover_service(const std::string& service_name) {
-    CURL* curl = curl_easy_init();
-    std::string service_url = "http://localhost:8500/v1/catalog/service/" + service_name;
-    std::string response;
-
-    if (curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, service_url.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, [](char* data, size_t size, size_t nmemb, std::string* buffer) {
-            buffer->append(data, size * nmemb);
-            return size * nmemb;
-            });
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-        curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-    }
-
-    // Parse the response for service details
-    return response;
-}
-
+/**
+ * @brief Starts the server and begins listening for incoming connections.
+ */
 void Server::start() {
-    server_fd = create_server_socket(port);
-    if (server_fd < 0) return;
+    server_fd = create_server_socket(port); // Create and bind the server socket
+    if (server_fd < 0) {
+        log_message("Failed to create server socket");
+        return;
+    }
+    log_message("Server started on port " + std::to_string(port)); // Log server start message
+    handle_connections(); // Start handling connections
+}
 
-    log_message("Server is listening on port " + std::to_string(port));
-    handle_connections();
+/**
+ * @brief Retrieves the MIME type based on the file extension.
+ * @param path The file path for which to determine the MIME type.
+ * @return The MIME type as a string.
+ */
+std::string Server::get_mime_type(const std::string& path) {
+    if (path.ends_with(".html") || path.ends_with(".htm")) return "text/html";
+    else if (path.ends_with(".css")) return "text/css";
+    else if (path.ends_with(".js")) return "application/javascript";
+    else if (path.ends_with(".json")) return "application/json";
+    else if (path.ends_with(".jpg") || path.ends_with(".jpeg")) return "image/jpeg";
+    else if (path.ends_with(".png")) return "image/png";
+    else return "application/octet-stream"; // Default MIME type
 }
