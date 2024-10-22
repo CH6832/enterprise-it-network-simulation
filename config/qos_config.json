@@ -1,9 +1,49 @@
 {
   "qos": {
-      "priority": {
-          "video": "high",
-          "voice": "medium",
-          "data": "low"
+    "policies": [
+      {
+        "traffic_type": "video",
+        "priority": "high",
+        "description": "High priority for video conferencing and streaming services.",
+        "protocols": ["TCP", "UDP"],
+        "bandwidth_allocation": {
+          "minimum": "2 Mbps",
+          "maximum": "10 Mbps"
+        },
+        "latency": {
+          "maximum": "100 ms",
+          "jitter": "10 ms"
+        }
+      },
+      {
+        "traffic_type": "voice",
+        "priority": "medium",
+        "description": "Medium priority for VoIP calls and services.",
+        "protocols": ["UDP"],
+        "bandwidth_allocation": {
+          "minimum": "100 Kbps",
+          "maximum": "1 Mbps"
+        },
+        "latency": {
+          "maximum": "150 ms",
+          "jitter": "20 ms"
+        }
+      },
+      {
+        "traffic_type": "data",
+        "priority": "low",
+        "description": "Low priority for general data traffic such as email and file transfers.",
+        "protocols": ["TCP"],
+        "bandwidth_allocation": {
+          "minimum": "512 Kbps",
+          "maximum": "5 Mbps"
+        },
+        "latency": {
+          "maximum": "300 ms",
+          "jitter": "30 ms"
+        }
       }
+    ],
+    "description": "QoS policies for managing network traffic priority and resource allocation."
   }
 }
