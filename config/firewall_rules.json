@@ -1,14 +1,82 @@
 {
-  "rules": [
+  "firewall_rules": {
+    "rules": [
       {
-          "action": "allow",
-          "protocol": "tcp",
-          "port": 80
+        "action": "allow",
+        "protocol": "tcp",
+        "port": 80,
+        "source": {
+          "ip": "192.168.1.0/24",
+          "description": "Allow HTTP traffic from local network"
+        },
+        "destination": {
+          "ip": "0.0.0.0/0",
+          "description": "Allow to all destinations"
+        },
+        "description": "Allow incoming HTTP requests"
       },
       {
-          "action": "deny",
-          "protocol": "udp",
-          "port": 53
+        "action": "allow",
+        "protocol": "tcp",
+        "port": 443,
+        "source": {
+          "ip": "192.168.1.0/24",
+          "description": "Allow HTTPS traffic from local network"
+        },
+        "destination": {
+          "ip": "0.0.0.0/0",
+          "description": "Allow to all destinations"
+        },
+        "description": "Allow incoming HTTPS requests"
+      },
+      {
+        "action": "deny",
+        "protocol": "udp",
+        "port": 53,
+        "source": {
+          "ip": "0.0.0.0/0",
+          "description": "Deny DNS queries from any source"
+        },
+        "destination": {
+          "ip": "0.0.0.0/0",
+          "description": "Deny to all destinations"
+        },
+        "description": "Deny DNS queries to prevent external DNS leakage"
+      },
+      {
+        "action": "deny",
+        "protocol": "icmp",
+        "source": {
+          "ip": "0.0.0.0/0",
+          "description": "Deny all ping requests from any source"
+        },
+        "destination": {
+          "ip": "192.168.1.0/24",
+          "description": "Deny pings to local network"
+        },
+        "description": "Deny ICMP echo requests to enhance security"
+      },
+      {
+        "action": "allow",
+        "protocol": "tcp",
+        "port": 22,
+        "source": {
+          "ip": "192.168.1.0/24",
+          "description": "Allow SSH access from local network"
+        },
+        "destination": {
+          "ip": "192.168.1.10",
+          "description": "Allow to specific server"
+        },
+        "description": "Allow SSH traffic for management"
       }
-  ]
+    ],
+    "logging": {
+      "enabled": true,
+      "log_level": "info",
+      "log_file": "/var/log/firewall.log",
+      "log_format": "json"
+    },
+    "description": "Firewall rules for enterprise network simulation"
+  }
 }
