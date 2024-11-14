@@ -1,4 +1,4 @@
-# Enterprise Network Simulation
+# Enterprise IT Network Simulation
 
 Enterprise Network Simulation is a network simulation project designed to model various network devices and security features. This project allows users to create virtual networks, simulate traffic, and test security measures in a controlled environment.
 
