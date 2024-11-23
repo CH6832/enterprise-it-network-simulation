@@ -1,25 +1,60 @@
-# Enterprise IT Network Simulation
+# Enterprise Network Simulation
 
-Enterprise Network Simulation is a network simulation project designed to model various network devices and security features. This project allows users to create virtual networks, simulate traffic, and test security measures in a controlled environment.
+**Enterprise Network Simulation** is a comprehensive network simulation project designed to model various network devices, simulate traffic, and test security features within a controlled virtual environment. This project allows users to design, test, and validate networking setups, security configurations, and attack scenarios, making it an ideal tool for network engineers, cybersecurity professionals, and anyone interested in networking concepts.
 
 ## Features
 
-- **Network Device Simulation**: Simulate various devices such as routers, switches, firewalls, and servers.
-- **Traffic Simulation**: Generate and manage network traffic for testing.
-- **Security Testing**: Implement and evaluate security measures, including firewalls and intrusion detection systems.
-- **VPN Support**: Simulate VPN functionalities including tunneling and encryption.
-- **Custom Configurations**: Load configurations for networks, firewalls, and QoS policies.
-- **Attack Simulations**: Model various network attacks such as Smurf attacks and Man-in-the-Middle (MITM) attacks.
+- **Network Device Simulation**: Simulate a variety of network devices including routers, switches, firewalls, servers, and more.
+- **Traffic Simulation**: Generate and manage network traffic to test network performance, stress scenarios, and capacity.
+- **Security Testing**: Implement and evaluate security measures like advanced firewalls, intrusion detection systems (IDS), and attack simulations.
+- **VPN Support**: Simulate VPN functionalities, including tunneling, encryption, and remote access.
+- **Custom Configurations**: Load custom configurations for network devices, firewalls, and Quality of Service (QoS) policies.
+- **Attack Simulations**: Model and simulate real-world network attacks such as Smurf attacks and Man-in-the-Middle (MITM) attacks.
+- **OS Simulation**: Simulate operating system environments on network devices with process management, file systems, and multi-threading.
 
 ## Getting Started
 
-To get started, clone this repository and build the project:
+To get started with the simulation, follow the steps below to clone the repository, install dependencies, and build the project.
 
-```bash
-git clone https://github.com/yourusername/Enterprise-Network-Simulation.git
-cd Enterprise-Network-Simulation
-# Build instructions
-```
+### Prerequisites
+
+Make sure you have the following tools installed:
+- **Visual Studio Community Edition 2022** (IDE)
+- **C++ Compiler** (GCC, Clang, or equivalent)
+- **CMake** (for building the project)
+- **Google Test** (for unit testing)
+- **spdlog** (for logging)
+
+### Installation
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/yourusername/Enterprise-Network-Simulation.git
+   cd Enterprise-Network-Simulation
+   ```
+
+2. Install dependencies (if not already installed):
+
+   For Ubuntu-based systems:
+   ```bash
+   sudo apt-get install cmake g++ libgtest-dev libspdlog-dev
+   ```
+
+3. Build the project:
+
+   ```bash
+   mkdir build
+   cd build
+   cmake ..
+   make
+   ```
+
+4. To run the simulation, use the following command:
+
+   ```bash
+   ./main
+   ```
 
 ### Project Structure
 
@@ -52,8 +87,8 @@ cd Enterprise-Network-Simulation
 │   │   ├── firewall/                 # Firewall rules, packet filtering, IDS/IPS
 │   │   │   ├── layer2_filter.cpp     # OSI Layer 2 filtering
 │   │   │   ├── tcp_udp_limits.cpp    # Limit TCP/UDP access
-│   │   │   ├── qos_management.cpp     # Quality of Service simulation
-│   │   │   └── vpn_encryption.cpp     # VPN encryption and tunneling logic
+│   │   │   ├── qos_management.cpp    # Quality of Service simulation
+│   │   │   └── vpn_encryption.cpp    # VPN encryption and tunneling logic
 │   │   ├── ids.cpp                   # Intrusion Detection System (IDS)
 │   │   ├── threat_detection.cpp      # Threat detection and anomaly monitoring
 │   │   ├── encryption.cpp            # Encryption algorithms (latest technologies)
@@ -90,39 +125,45 @@ cd Enterprise-Network-Simulation
 │   ├── vpn_tests.cpp                 # Tests for VPN encryption, authentication, and tunneling
 │   └── integration_tests/            # End-to-end simulation tests
 │
-├── scripts/                          # Utility scripts
-│   ├── start_simulation.sh           # Bash script to start the simulation
-│   ├── stop_simulation.sh            # Bash script to stop the simulation
-│   └── network_attack_simulator.sh   # Script to simulate attacks (e.g., Smurf, MITM)
-│
-├── logs/                             # Log files for network events, attacks, VPN connections
-│   ├── firewall.log                  # Log of firewall actions and blocked traffic
-│   ├── vpn_connections.log           # Log of VPN connection attempts and encryption status
-│   └── attack_detection.log          # Log of detected network attacks
-│
-├── README.md                         # General project overview and instructions
-├── LICENSE                           # License file for the project
-├── CONTRIBUTING.md                   # Guidelines for contributing to the project
-└── .gitignore                        # Files and directories to ignore in Git
+└── main.cpp                          # Entry point for running the network simulation
 ```
 
 ## Running the Simulation
 
-To run the simulation, use the following command:
+To run the simulation, execute the following command:
 
 ```bash
-./start_simulation.sh
+./main
 ```
 
-To stop the simulation, execute:
+This will start the simulation and display logs based on your network configuration, devices, and security settings.
+
+## Running Tests
+
+To run unit tests, navigate to the `tests` directory and compile the test files using CMake or any suitable build system.
 
 ```bash
-./stop_simulation.sh
+cd tests
+g++ -std=c++11 -lgtest -pthread *.cpp -o test_runner
+./test_runner
 ```
 
-## Testing
+Alternatively, if you have CMake configured for testing:
 
-To run the tests, navigate to the `tests` directory and use your preferred testing framework to execute the test files.
+```bash
+cd build
+cmake --build . --target tests
+./tests
+```
+
+### Unit Tests
+
+The project includes unit tests for various components of the simulation, such as:
+
+- **Security Tests**: Tests for firewalls, VPN, intrusion detection systems, and attacks.
+- **Network Tests**: Tests for devices like routers, switches, and packet handlers.
+- **OS Simulation Tests**: Tests for file system management, process creation, and threading.
+- **VPN Tests**: Tests for VPN tunneling, encryption, and decryption.
 
 ## License
 
